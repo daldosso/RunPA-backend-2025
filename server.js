@@ -10,10 +10,12 @@ app.use(cors());
 
 const STRAVA_CLIENT_ID = process.env.STRAVA_CLIENT_ID;
 const STRAVA_CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET;
+const STRAVA_ACTIVITIES_URL = process.env.STRAVA_ACTIVITIES_URL;
 
 const mongoose = require("mongoose");
 
-mongoose.connect(process.env.DATABASE_URL, {
+mongoose
+  .connect(process.env.DATABASE_URL, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
@@ -50,7 +52,7 @@ app.post("/strava/exchange_token", async (req, res) => {
     console.log("Exchange token with", qs.toString());
 
     const response = await axios.post(
-      "https://www.strava.com/oauth/token",
+      process.env.STRAVA_TOKEN_URL,
       qs.toString(),
       {
         headers: {
@@ -77,7 +79,7 @@ app.post("/strava/refresh_token", async (req, res) => {
   }
 
   try {
-    const response = await axios.post("https://www.strava.com/oauth/token", {
+    const response = await axios.post(process.env.STRAVA_TOKEN_URL, {
       client_id: STRAVA_CLIENT_ID,
       client_secret: STRAVA_CLIENT_SECRET,
       refresh_token,
@@ -104,14 +106,11 @@ app.get("/strava/activities", async (req, res) => {
   const accessToken = authHeader.split(" ")[1];
 
   try {
-    const response = await axios.get(
-      "https://www.strava.com/api/v3/athlete/activities",
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      }
-    );
+    const response = await axios.get(STRAVA_ACTIVITIES_URL, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
 
     const activities = response.data;
 
@@ -129,6 +128,37 @@ app.get("/strava/activities", async (req, res) => {
     res
       .status(500)
       .json({ error: "Errore durante il recupero delle attività" });
+  }
+});
+
+app.get("/strava/web-callback", async (req, res) => {
+  const { code } = req.query;
+
+  if (!code) {
+    return res.status(400).json({ error: "Authorization code is missing" });
+  }
+
+  try {
+    const qs = new URLSearchParams({
+      client_id: STRAVA_CLIENT_ID,
+      client_secret: STRAVA_CLIENT_SECRET,
+      code,
+      grant_type: "authorization_code",
+    });
+
+    const response = await axios.post(
+      process.env.STRAVA_TOKEN_URL,
+      qs.toString(),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    );
+
+    const accessToken = response.data.access_token;
+
+    const redirectUrl = `${process.env.FRONTEND_REDIRECT_URL}?token=${accessToken}`;
+    res.redirect(redirectUrl);
+  } catch (error) {
+    console.error("web-callback error:", error.response?.data || error.message);
+    res.status(500).json({ error: "Failed to exchange token" });
   }
 });
 
