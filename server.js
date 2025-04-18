@@ -162,6 +162,22 @@ app.get("/strava/web-callback", async (req, res) => {
   }
 });
 
+app.get("/strava/debug-code", (req, res) => {
+  const { code, scope } = req.query;
+
+  if (!code) {
+    return res.status(400).send("❌ No code received");
+  }
+
+  console.log("✅ Received code:", code);
+  res.send(`
+    <h1>Code received!</h1>
+    <p><strong>code:</strong> ${code}</p>
+    <p><strong>scope:</strong> ${scope}</p>
+    <p>Use this code in Postman to test <code>/strava/exchange_token</code></p>
+  `);
+});
+
 app.listen(process.env.PORT || 5000, () => {
   console.log(`Server running on port ${process.env.PORT || 5000}`);
 });
