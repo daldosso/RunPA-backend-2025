@@ -178,6 +178,21 @@ app.get("/strava/debug-code", (req, res) => {
   `);
 });
 
+app.get("/strava/web-callback-init", (req, res) => {
+  const backendUrl = process.env.BACKEND_URL;
+
+  if (!backendUrl) {
+    return res
+      .status(500)
+      .send("❌ BACKEND_URL non configurato nelle variabili di ambiente");
+  }
+
+  const redirectUri = encodeURIComponent(`${backendUrl}/strava/web-callback`);
+  const authUrl = `https://www.strava.com/oauth/authorize?client_id=${STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${redirectUri}&approval_prompt=auto&scope=read,activity:read`;
+
+  res.redirect(authUrl);
+});
+
 app.listen(process.env.PORT || 5000, () => {
   console.log(`Server running on port ${process.env.PORT || 5000}`);
 });
