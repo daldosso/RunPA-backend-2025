@@ -24,7 +24,8 @@ mongoose
 
 app.get("/strava/callback", async (req, res) => {
   const { code } = req.query;
-  if (!code) return res.status(400).json({ error: "Authorization code is missing" });
+  if (!code)
+    return res.status(400).json({ error: "Authorization code is missing" });
 
   console.log(`Redirecting with code: ${code}`);
   res.redirect(`com.adaldosso.runpa://oauthredirect?code=${code}`);
@@ -32,7 +33,8 @@ app.get("/strava/callback", async (req, res) => {
 
 app.post("/strava/exchange_token", async (req, res) => {
   const { code } = req.body;
-  if (!code) return res.status(400).json({ error: "Authorization code is missing" });
+  if (!code)
+    return res.status(400).json({ error: "Authorization code is missing" });
 
   try {
     const qs = new URLSearchParams({
@@ -52,14 +54,23 @@ app.post("/strava/exchange_token", async (req, res) => {
 
     res.json(response.data);
   } catch (error) {
-    console.error("❌ Token exchange failed:", error.response?.data || error.message);
-    res.status(500).json({ error: "Failed to exchange token", details: error.response?.data });
+    console.error(
+      "❌ Token exchange failed:",
+      error.response?.data || error.message
+    );
+    res
+      .status(500)
+      .json({
+        error: "Failed to exchange token",
+        details: error.response?.data,
+      });
   }
 });
 
 app.post("/strava/refresh_token", async (req, res) => {
   const { refresh_token } = req.body;
-  if (!refresh_token) return res.status(400).json({ error: "Refresh token is missing" });
+  if (!refresh_token)
+    return res.status(400).json({ error: "Refresh token is missing" });
 
   try {
     const response = await axios.post(process.env.STRAVA_TOKEN_URL, {
@@ -71,15 +82,25 @@ app.post("/strava/refresh_token", async (req, res) => {
 
     res.json(response.data);
   } catch (error) {
-    console.error("❌ Token refresh failed:", error.response?.data || error.message);
-    res.status(500).json({ error: "Failed to refresh token", details: error.response?.data });
+    console.error(
+      "❌ Token refresh failed:",
+      error.response?.data || error.message
+    );
+    res
+      .status(500)
+      .json({
+        error: "Failed to refresh token",
+        details: error.response?.data,
+      });
   }
 });
 
 app.get("/strava/activities", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Missing or invalid Authorization header" });
+    return res
+      .status(401)
+      .json({ error: "Missing or invalid Authorization header" });
   }
 
   const accessToken = authHeader.split(" ")[1];
@@ -113,14 +134,18 @@ app.get("/strava/activities", async (req, res) => {
 
     res.json(activities);
   } catch (error) {
-    console.error("❌ Failed to fetch activities or athlete data:", error.response?.data || error.message);
+    console.error(
+      "❌ Failed to fetch activities or athlete data:",
+      error.response?.data || error.message
+    );
     res.status(500).json({ error: "Failed to fetch data from Strava" });
   }
 });
 
 app.get("/strava/web-callback", async (req, res) => {
   const { code } = req.query;
-  if (!code) return res.status(400).json({ error: "Authorization code is missing" });
+  if (!code)
+    return res.status(400).json({ error: "Authorization code is missing" });
 
   try {
     const qs = new URLSearchParams({
@@ -140,7 +165,10 @@ app.get("/strava/web-callback", async (req, res) => {
     const redirectUrl = `${process.env.FRONTEND_REDIRECT_URL}?token=${accessToken}`;
     res.redirect(redirectUrl);
   } catch (error) {
-    console.error("❌ Web callback error:", error.response?.data || error.message);
+    console.error(
+      "❌ Web callback error:",
+      error.response?.data || error.message
+    );
     res.status(500).json({ error: "Failed to exchange token" });
   }
 });
@@ -160,12 +188,50 @@ app.get("/strava/debug-code", (req, res) => {
 
 app.get("/strava/web-callback-init", (req, res) => {
   const backendUrl = process.env.BACKEND_URL;
-  if (!backendUrl) return res.status(500).send("❌ BACKEND_URL not configured in environment variables");
+  if (!backendUrl)
+    return res
+      .status(500)
+      .send("❌ BACKEND_URL not configured in environment variables");
 
   const redirectUri = encodeURIComponent(`${backendUrl}/strava/web-callback`);
   const authUrl = `${STRAVA_AUTH_URL}?client_id=${STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${redirectUri}&approval_prompt=auto&scope=read,activity:read`;
 
   res.redirect(authUrl);
+});
+
+app.get("/strava/athletes", async (req, res) => {
+  try {
+    const athletes = await Athlete.find({}, { _id: 0, __v: 0 });
+    const results = [];
+
+    for (const athlete of athletes) {
+      const lastActivity = await Activity.findOne(
+        {
+          "athlete.id": athlete.id,
+          start_latlng: { $exists: true, $ne: null },
+        },
+        {},
+        { sort: { start_date: -1 } }
+      );
+
+      let last_lat, last_lng;
+
+      if (lastActivity?.start_latlng?.length === 2) {
+        [last_lat, last_lng] = lastActivity.start_latlng;
+      }
+
+      results.push({
+        ...athlete.toObject(),
+        last_lat,
+        last_lng,
+      });
+    }
+
+    res.json(results);
+  } catch (error) {
+    console.error("❌ Failed to fetch athletes with locations:", error.message);
+    res.status(500).json({ error: "Failed to fetch athletes with locations" });
+  }
 });
 
 app.listen(process.env.PORT || 5000, () => {
