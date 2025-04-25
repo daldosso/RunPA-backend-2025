@@ -58,12 +58,10 @@ app.post("/strava/exchange_token", async (req, res) => {
       "❌ Token exchange failed:",
       error.response?.data || error.message
     );
-    res
-      .status(500)
-      .json({
-        error: "Failed to exchange token",
-        details: error.response?.data,
-      });
+    res.status(500).json({
+      error: "Failed to exchange token",
+      details: error.response?.data,
+    });
   }
 });
 
@@ -86,12 +84,10 @@ app.post("/strava/refresh_token", async (req, res) => {
       "❌ Token refresh failed:",
       error.response?.data || error.message
     );
-    res
-      .status(500)
-      .json({
-        error: "Failed to refresh token",
-        details: error.response?.data,
-      });
+    res.status(500).json({
+      error: "Failed to refresh token",
+      details: error.response?.data,
+    });
   }
 });
 
@@ -206,16 +202,12 @@ app.get("/strava/athletes", async (req, res) => {
 
     for (const athlete of athletes) {
       const lastActivity = await Activity.findOne(
-        {
-          "athlete.id": athlete.id,
-          start_latlng: { $exists: true, $ne: null },
-        },
+        { "athlete.id": athlete.id },
         {},
         { sort: { start_date: -1 } }
       );
 
       let last_lat, last_lng;
-
       if (lastActivity?.start_latlng?.length === 2) {
         [last_lat, last_lng] = lastActivity.start_latlng;
       }
@@ -224,13 +216,29 @@ app.get("/strava/athletes", async (req, res) => {
         ...athlete.toObject(),
         last_lat,
         last_lng,
+        last_activity: lastActivity
+          ? {
+              id: lastActivity.id,
+              name: lastActivity.name,
+              distance: lastActivity.distance,
+              moving_time: lastActivity.moving_time,
+              elapsed_time: lastActivity.elapsed_time,
+              average_speed: lastActivity.average_speed,
+              type: lastActivity.type,
+              start_date: lastActivity.start_date,
+              start_latlng: lastActivity.start_latlng,
+            }
+          : null,
       });
     }
 
     res.json(results);
   } catch (error) {
-    console.error("❌ Failed to fetch athletes with locations:", error.message);
-    res.status(500).json({ error: "Failed to fetch athletes with locations" });
+    console.error(
+      "❌ Failed to fetch athletes with activities:",
+      error.message
+    );
+    res.status(500).json({ error: "Failed to fetch athletes with activities" });
   }
 });
 
