@@ -1,20 +1,25 @@
 const mongoose = require("mongoose");
 
-const athleteSchema = new mongoose.Schema(
-  {
-    id: { type: Number, required: true, unique: true },
-    username: String,
+const ActivitySchema = new mongoose.Schema({
+  id: { type: Number, required: true, unique: true },
+  name: String,
+  distance: Number,
+  moving_time: Number,
+  elapsed_time: Number,
+  total_elevation_gain: Number,
+  type: String,
+  start_date: String,
+  start_latlng: [Number],
+  athlete: {
+    id: Number,
     firstname: String,
     lastname: String,
-    city: String,
-    country: String,
-    sex: String,
-    profile: String,
-    email: String,
-    last_lat: Number,
-    last_lng: Number,
   },
-  { timestamps: true }
-);
+  location: {
+    city: { type: String, default: null },
+    state: { type: String, default: null },
+    country: { type: String, default: null },
+  },
+});
 
-module.exports = mongoose.model("Athlete", athleteSchema);
+module.exports = mongoose.model("Activity", ActivitySchema);

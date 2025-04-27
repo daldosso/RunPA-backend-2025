@@ -22,6 +22,42 @@ mongoose
   .then(() => console.log("✅ Connected to MongoDB"))
   .catch((err) => console.error("❌ MongoDB connection error:", err));
 
+// Funzione di Reverse Geocoding
+async function reverseGeocode(lat, lon) {
+  try {
+    const response = await axios.get(
+      "https://nominatim.openstreetmap.org/reverse",
+      {
+        params: {
+          format: "json",
+          lat,
+          lon,
+          zoom: 10,
+          addressdetails: 1,
+        },
+        headers: {
+          "User-Agent": "RunPA-App/1.0",
+        },
+      }
+    );
+
+    const { address } = response.data;
+
+    return {
+      city: address.city || address.town || address.village || null,
+      state: address.state || null,
+      country: address.country || null,
+    };
+  } catch (error) {
+    console.error("❌ Reverse geocoding failed:", error.message);
+    return {
+      city: null,
+      state: null,
+      country: null,
+    };
+  }
+}
+
 app.get("/strava/callback", async (req, res) => {
   const { code } = req.query;
   if (!code)
@@ -121,9 +157,30 @@ app.get("/strava/activities", async (req, res) => {
     const activities = activitiesResponse.data;
 
     for (const activity of activities) {
+      let location = {
+        city: activity.location_city || null,
+        state: activity.location_state || null,
+        country: activity.location_country || null,
+      };
+
+      if (!location.city && activity.start_latlng?.length === 2) {
+        const [lat, lon] = activity.start_latlng;
+        const reverseLocation = await reverseGeocode(lat, lon);
+        location = {
+          city: reverseLocation.city,
+          state: reverseLocation.state,
+          country: reverseLocation.country,
+        };
+      }
+
       await Activity.updateOne(
         { id: activity.id },
-        { $set: activity },
+        {
+          $set: {
+            ...activity,
+            location,
+          },
+        },
         { upsert: true }
       );
     }
@@ -166,160 +223,6 @@ app.get("/strava/web-callback", async (req, res) => {
       error.response?.data || error.message
     );
     res.status(500).json({ error: "Failed to exchange token" });
-  }
-});
-
-app.get("/strava/debug-code", (req, res) => {
-  const { code, scope } = req.query;
-  if (!code) return res.status(400).send("❌ No code received");
-
-  console.log("✅ Received code:", code);
-  res.send(`
-    <h1>Code received!</h1>
-    <p><strong>code:</strong> ${code}</p>
-    <p><strong>scope:</strong> ${scope}</p>
-    <p>Use this code in Postman to test <code>/strava/exchange_token</code></p>
-  `);
-});
-
-app.get("/strava/web-callback-init", (req, res) => {
-  const backendUrl = process.env.BACKEND_URL;
-  if (!backendUrl)
-    return res
-      .status(500)
-      .send("❌ BACKEND_URL not configured in environment variables");
-
-  const redirectUri = encodeURIComponent(`${backendUrl}/strava/web-callback`);
-  const authUrl = `${STRAVA_AUTH_URL}?client_id=${STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${redirectUri}&approval_prompt=auto&scope=read,activity:read`;
-
-  res.redirect(authUrl);
-});
-
-app.get("/strava/athletes", async (req, res) => {
-  try {
-    const athletes = await Athlete.find({}, { _id: 0, __v: 0 });
-    const results = [];
-
-    for (const athlete of athletes) {
-      const lastActivity = await Activity.findOne(
-        { "athlete.id": athlete.id },
-        {},
-        { sort: { start_date: -1 } }
-      );
-
-      let last_lat, last_lng;
-      if (lastActivity?.start_latlng?.length === 2) {
-        [last_lat, last_lng] = lastActivity.start_latlng;
-      }
-
-      results.push({
-        ...athlete.toObject(),
-        last_lat,
-        last_lng,
-        last_activity: lastActivity
-          ? {
-              id: lastActivity.id,
-              name: lastActivity.name,
-              distance: lastActivity.distance,
-              moving_time: lastActivity.moving_time,
-              elapsed_time: lastActivity.elapsed_time,
-              average_speed: lastActivity.average_speed,
-              type: lastActivity.type,
-              start_date: lastActivity.start_date,
-              start_latlng: lastActivity.start_latlng,
-            }
-          : null,
-      });
-    }
-
-    res.json(results);
-  } catch (error) {
-    console.error(
-      "❌ Failed to fetch athletes with activities:",
-      error.message
-    );
-    res.status(500).json({ error: "Failed to fetch athletes with activities" });
-  }
-});
-
-const haversineDistance = (coords1, coords2) => {
-  const toRad = (value) => (value * Math.PI) / 180;
-
-  const [lat1, lon1] = coords1;
-  const [lat2, lon2] = coords2;
-
-  const R = 6371; // Earth radius in km
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-};
-
-app.get("/strava/farthest-activities", async (req, res) => {
-  try {
-    const athletes = await Athlete.find({}, { _id: 0, __v: 0 });
-    const aronaCoords = [45.7585, 8.5569];
-
-    const results = [];
-
-    for (const athlete of athletes) {
-      const activities = await Activity.find(
-        { "athlete.id": athlete.id, start_latlng: { $exists: true } },
-        { id: 1, name: 1, distance: 1, start_latlng: 1, start_date: 1 }
-      );
-
-      let farthestActivity = null;
-      let maxDistance = -1;
-
-      for (const activity of activities) {
-        if (
-          activity.start_latlng &&
-          Array.isArray(activity.start_latlng) &&
-          activity.start_latlng.length === 2
-        ) {
-          const distance = haversineDistance(
-            aronaCoords,
-            activity.start_latlng
-          );
-
-          if (distance > maxDistance) {
-            maxDistance = distance;
-            farthestActivity = {
-              id: activity.id,
-              name: activity.name,
-              distance: activity.distance,
-              start_latlng: activity.start_latlng,
-              start_date: activity.start_date,
-              distance_from_arona_km: distance,
-            };
-          }
-        }
-      }
-
-      results.push({
-        athlete: {
-          id: athlete.id,
-          firstname: athlete.firstname,
-          lastname: athlete.lastname,
-        },
-        farthest_activity: farthestActivity,
-      });
-    }
-
-    res.json(results);
-  } catch (error) {
-    console.error("❌ Failed to fetch farthest activities:", error.message);
-    res
-      .status(500)
-      .json({ error: "Failed to fetch farthest activities for athletes" });
   }
 });
 
