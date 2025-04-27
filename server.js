@@ -226,6 +226,95 @@ app.get("/strava/web-callback", async (req, res) => {
   }
 });
 
+const haversineDistance = (coords1, coords2) => {
+  const toRad = (value) => (value * Math.PI) / 180;
+
+  const [lat1, lon1] = coords1;
+  const [lat2, lon2] = coords2;
+
+  const R = 6371; // Earth radius in km
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+app.get("/strava/farthest-activities", async (req, res) => {
+  try {
+    const athletes = await Athlete.find({}, { _id: 0, __v: 0 });
+    const aronaCoords = [45.7585, 8.5569];
+
+    const results = [];
+
+    for (const athlete of athletes) {
+      const activities = await Activity.find(
+        { "athlete.id": athlete.id, start_latlng: { $exists: true } },
+        {
+          id: 1,
+          name: 1,
+          distance: 1,
+          start_latlng: 1,
+          start_date: 1,
+          location: 1,
+        }
+      );
+
+      let farthestActivity = null;
+      let maxDistance = -1;
+
+      for (const activity of activities) {
+        if (
+          activity.start_latlng &&
+          Array.isArray(activity.start_latlng) &&
+          activity.start_latlng.length === 2
+        ) {
+          const distance = haversineDistance(
+            aronaCoords,
+            activity.start_latlng
+          );
+
+          if (distance > maxDistance) {
+            maxDistance = distance;
+            farthestActivity = {
+              id: activity.id,
+              name: activity.name,
+              distance: activity.distance,
+              start_latlng: activity.start_latlng,
+              start_date: activity.start_date,
+              distance_from_arona_km: distance,
+              location: activity.location || null, // <- qui includiamo location
+            };
+          }
+        }
+      }
+
+      results.push({
+        athlete: {
+          id: athlete.id,
+          firstname: athlete.firstname,
+          lastname: athlete.lastname,
+        },
+        farthest_activity: farthestActivity,
+      });
+    }
+
+    res.json(results);
+  } catch (error) {
+    console.error("❌ Failed to fetch farthest activities:", error.message);
+    res
+      .status(500)
+      .json({ error: "Failed to fetch farthest activities for athletes" });
+  }
+});
+
 app.listen(process.env.PORT || 5000, () => {
   console.log(`🚀 Server running on port ${process.env.PORT || 5000}`);
 });
