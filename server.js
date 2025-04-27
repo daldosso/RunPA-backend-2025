@@ -301,6 +301,7 @@ app.get("/strava/farthest-activities", async (req, res) => {
           id: athlete.id,
           firstname: athlete.firstname,
           lastname: athlete.lastname,
+          profile: athlete.profile || null,
         },
         farthest_activity: farthestActivity,
       });
