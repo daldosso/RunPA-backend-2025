@@ -58,6 +58,20 @@ async function reverseGeocode(lat, lon) {
   }
 }
 
+app.get("/strava/web-callback-init", (req, res) => {
+  const backendUrl = process.env.BACKEND_URL;
+  if (!backendUrl)
+    return res
+      .status(500)
+      .send("❌ BACKEND_URL not configured in environment variables");
+
+  const redirectUri = encodeURIComponent(`${backendUrl}/strava/web-callback`);
+  const authUrl = `${STRAVA_AUTH_URL}?client_id=${STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${redirectUri}&approval_prompt=auto&scope=read,activity:read`;
+
+  res.redirect(authUrl);
+});
+
+
 app.get("/strava/callback", async (req, res) => {
   const { code } = req.query;
   if (!code)
