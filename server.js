@@ -71,7 +71,6 @@ app.get("/strava/web-callback-init", (req, res) => {
   res.redirect(authUrl);
 });
 
-
 app.get("/strava/callback", async (req, res) => {
   const { code } = req.query;
   if (!code)
@@ -327,6 +326,61 @@ app.get("/strava/farthest-activities", async (req, res) => {
     res
       .status(500)
       .json({ error: "Failed to fetch farthest activities for athletes" });
+  }
+});
+
+app.get("/strava/athletes", async (req, res) => {
+  try {
+    const athletes = await Athlete.find({}, { _id: 0, __v: 0 });
+    const results = [];
+
+    for (const athlete of athletes) {
+      const lastActivity = await Activity.findOne(
+        { "athlete.id": athlete.id },
+        {},
+        { sort: { start_date: -1 } }
+      );
+
+      const totalDistanceAgg = await Activity.aggregate([
+        { $match: { "athlete.id": athlete.id, distance: { $exists: true } } },
+        { $group: { _id: null, total: { $sum: "$distance" } } },
+      ]);
+
+      const totalDistance = totalDistanceAgg[0]?.total || 0;
+
+      let last_lat, last_lng;
+      if (lastActivity?.start_latlng?.length === 2) {
+        [last_lat, last_lng] = lastActivity.start_latlng;
+      }
+
+      results.push({
+        ...athlete.toObject(),
+        total_distance: +(totalDistance / 1000).toFixed(2), // km
+        last_lat,
+        last_lng,
+        last_activity: lastActivity
+          ? {
+              id: lastActivity.id,
+              name: lastActivity.name,
+              distance: lastActivity.distance,
+              moving_time: lastActivity.moving_time,
+              elapsed_time: lastActivity.elapsed_time,
+              average_speed: lastActivity.average_speed,
+              type: lastActivity.type,
+              start_date: lastActivity.start_date,
+              start_latlng: lastActivity.start_latlng,
+            }
+          : null,
+      });
+    }
+
+    res.json(results);
+  } catch (error) {
+    console.error(
+      "❌ Failed to fetch athletes with activities:",
+      error.message
+    );
+    res.status(500).json({ error: "Failed to fetch athletes with activities" });
   }
 });
 
