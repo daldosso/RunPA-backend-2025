@@ -384,6 +384,78 @@ app.get("/strava/athletes", async (req, res) => {
   }
 });
 
+app.get("/strava/leaderboards", async (req, res) => {
+  try {
+    const topByDistance = await Activity.aggregate([
+      { $match: { distance: { $exists: true } } },
+      {
+        $group: {
+          _id: "$athlete.id",
+          total_distance: { $sum: "$distance" },
+        },
+      },
+      { $sort: { total_distance: -1 } },
+      { $limit: 5 },
+    ]);
+
+    const longestActivities = await Activity.aggregate([
+      { $match: { distance: { $exists: true } } },
+      {
+        $group: {
+          _id: "$athlete.id",
+          max_activity: {
+            $max: {
+              distance: "$distance",
+            },
+          },
+        },
+      },
+      { $sort: { max_activity: -1 } },
+      { $limit: 5 },
+    ]);
+
+    const topByActivityCount = await Activity.aggregate([
+      { $group: { _id: "$athlete.id", activity_count: { $sum: 1 } } },
+      { $sort: { activity_count: -1 } },
+      { $limit: 5 },
+    ]);
+
+    const athleteIds = [
+      ...new Set([
+        ...topByDistance.map((x) => x._id),
+        ...longestActivities.map((x) => x._id),
+        ...topByActivityCount.map((x) => x._id),
+      ]),
+    ];
+    const athletes = await Athlete.find(
+      { id: { $in: athleteIds } },
+      { id: 1, firstname: 1, lastname: 1, profile: 1, _id: 0 }
+    );
+    const idToAthlete = Object.fromEntries(
+      athletes.map((a) => [a.id, a])
+    );
+
+    res.json({
+      top_by_total_distance: topByDistance.map((x) => ({
+        athlete: idToAthlete[x._id],
+        total_distance_km: +(x.total_distance / 1000).toFixed(2),
+      })),
+      top_by_longest_activity: longestActivities.map((x) => ({
+        athlete: idToAthlete[x._id],
+        longest_activity_km: +(x.max_activity / 1000).toFixed(2),
+      })),
+      top_by_activity_count: topByActivityCount.map((x) => ({
+        athlete: idToAthlete[x._id],
+        activity_count: x.activity_count,
+      })),
+    });
+  } catch (error) {
+    console.error("❌ Failed to fetch leaderboards:", error.message);
+    res.status(500).json({ error: "Failed to fetch leaderboards" });
+  }
+});
+
+
 app.listen(process.env.PORT || 5000, () => {
   console.log(`🚀 Server running on port ${process.env.PORT || 5000}`);
 });
