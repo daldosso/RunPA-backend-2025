@@ -303,7 +303,7 @@ app.get("/strava/farthest-activities", async (req, res) => {
               start_latlng: activity.start_latlng,
               start_date: activity.start_date,
               distance_from_arona_km: distance,
-              location: activity.location || null, // <- qui includiamo location
+              location: activity.location || null,
             };
           }
         }
@@ -404,9 +404,7 @@ app.get("/strava/leaderboards", async (req, res) => {
         $group: {
           _id: "$athlete.id",
           max_activity: {
-            $max: {
-              distance: "$distance",
-            },
+            $max: "$distance",
           },
         },
       },
