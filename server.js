@@ -431,8 +431,22 @@ app.get("/strava/leaderboards", async (req, res) => {
       { id: { $in: athleteIds } },
       { id: 1, firstname: 1, lastname: 1, profile: 1, _id: 0 }
     );
+
+    function maskLastname(lastname) {
+      if (!lastname) return "";
+      const len = lastname.length;
+      if (len <= 2) return lastname[0] + "*";
+      return lastname[0] + "*".repeat(len - 2) + lastname[len - 1];
+    }
+
     const idToAthlete = Object.fromEntries(
-      athletes.map((a) => [a.id, a])
+      athletes.map((a) => [
+        a.id,
+        {
+          ...a.toObject(),
+          lastname: maskLastname(a.lastname),
+        },
+      ])
     );
 
     res.json({
